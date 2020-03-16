@@ -227,10 +227,13 @@ class StringRepresentation extends ValueRepresentation {
         return stream.readString(length);
     }
 
-    writeBytes(stream, value) {
-        const written = super.write(stream, "String", value);
-
-        return super.writeBytes(stream, value, written);
+    writeBytes(stream, value, useSyntax, originalString) {
+        if (originalString && originalString !== "") {
+            return stream.writeString(originalString);
+        } else {
+            const written = super.write(stream, "String", value);
+            return super.writeBytes(stream, value, written);
+        }
     }
 }
 
@@ -437,6 +440,8 @@ class DecimalString extends StringRepresentation {
         const BACKSLASH = String.fromCharCode(0x5c);
         //return this.readNullPaddedString(stream, length).trim();
         let ds = stream.readString(length);
+        const originalString = ds;
+
         ds = ds.replace(/[^0-9.\\\-+e]/gi, "");
         if (ds.indexOf(BACKSLASH) !== -1) {
             // handle decimal string with multiplicity
@@ -446,11 +451,16 @@ class DecimalString extends StringRepresentation {
             ds = [Number(ds)];
         }
 
-        return ds;
+        return [ds, originalString];
     }
 
-    writeBytes(stream, value) {
-        return super.writeBytes(stream, value.map(String));
+    writeBytes(stream, value, useSyntax, originalString) {
+        return super.writeBytes(
+            stream,
+            value.map(String),
+            useSyntax,
+            originalString
+        );
     }
 }
 

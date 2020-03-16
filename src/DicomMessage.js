@@ -1,4 +1,4 @@
-import { ReadBufferStream } from "./BufferStream.js";
+import { ReadBufferStream, WriteBufferStream } from "./BufferStream.js";
 import { Tag } from "./Tag.js";
 import { DicomMetaDictionary } from "./DicomMetaDictionary.js";
 import { DicomDict } from "./DicomDict.js";
@@ -29,6 +29,26 @@ const encapsulatedSyntaxes = [
     "1.2.840.10008.1.2.4.103"
 ];
 
+var deepEqual = function(x, y) {
+    if (x === y) {
+        return true;
+    } else if (
+        typeof x == "object" &&
+        x != null &&
+        typeof y == "object" && y != null
+    ) {
+        if (Object.keys(x).length != Object.keys(y).length) return false;
+
+        for (var prop in x) {
+            if (y.hasOwnProperty(prop)) {
+                if (!deepEqual(x[prop], y[prop])) return false;
+            } else return false;
+        }
+
+        return true;
+    } else return false;
+};
+
 class DicomMessage {
     static read(bufferStream, syntax, ignoreErrors) {
         var dict = {};
@@ -38,7 +58,8 @@ class DicomMessage {
 
                 dict[readInfo.tag.toCleanString()] = {
                     vr: readInfo.vr.type,
-                    Value: readInfo.values
+                    Value: readInfo.values,
+                    originalString: readInfo.originalString
                 };
             }
             return dict;
@@ -108,9 +129,38 @@ class DicomMessage {
             var tag = Tag.fromString(tagString),
                 tagObject = jsonObjects[tagString],
                 vrType = tagObject.vr,
-                values = tagObject.Value;
+                values = tagObject.Value,
+                originalString = "";
 
-            written += tag.write(useStream, vrType, values, syntax);
+            if (
+                "originalString" in tagObject &&
+                tagObject.originalString !== ""
+            ) {
+                const vr = ValueRepresentation.createByTypeString(vrType);
+                var stream = new WriteBufferStream(1024);
+                stream.writeString(tagObject.originalString);
+                stream.reset();
+
+                var [originalValues, os] = vr.read(
+                    stream,
+                    tagObject.originalString.length,
+                    syntax
+                );
+
+                // In case the values are the same, revert to original string.
+                if (deepEqual(values, originalValues)) {
+                    originalString = tagObject.originalString;
+                }
+            }
+
+            //written += tag.write(useStream, vrType, values, syntax);
+            written += tag.write(
+                useStream,
+                vrType,
+                values,
+                syntax,
+                originalString
+            );
         });
 
         return written;
@@ -163,6 +213,7 @@ class DicomMessage {
             }
         }
 
+        var originalString = "";
         var values = [];
         if (vr.isBinary() && length > vr.maxLength && !vr.noMultiple) {
             var times = length / vr.maxLength,
@@ -171,7 +222,12 @@ class DicomMessage {
                 values.push(vr.read(stream, vr.maxLength, syntax));
             }
         } else {
-            var val = vr.read(stream, length, syntax);
+            var val = "";
+            if (vr.type == "DS") {
+                [val, originalString] = vr.read(stream, length, syntax);
+            } else {
+                val = vr.read(stream, length, syntax);
+            }
             if (!vr.isBinary() && singleVRs.indexOf(vr.type) == -1) {
                 values = val;
                 if (typeof val === "string") {
@@ -187,7 +243,12 @@ class DicomMessage {
         }
         stream.setEndian(oldEndian);
 
-        return { tag: tag, vr: vr, values: values };
+        return {
+            tag: tag,
+            vr: vr,
+            values: values,
+            originalString: originalString
+        };
     }
 
     static lookupTag(tag) {

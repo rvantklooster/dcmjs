@@ -179,6 +179,36 @@ const tests = {
           );
       });
   },
+  test_read_write_1: () => {
+    // Test assumes that MRHead.zip has been downloaded and unzipped (see test_multiframe_1).
+    const unzipPath = path.join(os.tmpdir(), "test_multiframe_1");
+    const mrHeadPath = path.join(unzipPath, "MRHead");
+    console.log(mrHeadPath);
+
+    fs.readdir(mrHeadPath, (err, fileNames) => {
+      expect(err).to.equal(null);
+      //const arrayBufferOriginal = fs.readFileSync(path.join(mrHeadPath, fileNames[0])).buffer;
+      const arrayBufferOriginal = fs.readFileSync(path.join(mrHeadPath, 'MR.1.3.46.670589.11.21552.5.0.7980.2018022712132139031')).buffer;
+
+      const dicomDictOriginal = DicomMessage.readFile(arrayBufferOriginal);
+      //expect(dicomDictOriginal.dict['00180050'].Value[0]).to.equal(1.3);
+
+      //dicomDict.dict = dcmjs.data.DicomMetaDictionary.denaturalizeDataset(dataset);
+
+      let new_file_WriterBuffer = dicomDictOriginal.write();
+      fs.writeFileSync(mrHeadPath + "/file.dcm", new Buffer(new_file_WriterBuffer));
+
+      const arrayBufferWritten = fs.readFileSync(mrHeadPath + "/file.dcm").buffer;
+      const dicomDictWritten = DicomMessage.readFile(arrayBufferWritten);
+      expect(dicomDictWritten.dict['00180050'].Value[0]).to.equal(1.3);
+
+      expect(dicomDictOriginal).to.eql(dicomDictWritten);
+
+      // force test fail.
+      //expect(dicomDict.dict['00180051'].Value).to.equal(1.3);
+      console.log("Finished test_read_write_1");
+    })
+  },
   test_oneslice_seg: () => {
 
     const ctPelvisURL = "https://github.com/dcmjs-org/data/releases/download/CTPelvis/CTPelvis.zip";
